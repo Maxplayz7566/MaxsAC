@@ -13,23 +13,18 @@ class AutoClicker
     private static bool isAutoClicking = false;
     private static Thread clickThread;
 
-    // Update rate (in milliseconds between clicks)
     private static int updateRate = 1;
 
-    // New debounce time (in milliseconds)
     private static int debounceTime = 100;
 
-    // Hotkey for toggling autoclicker (default is F6)
     private static Keys hotkey = Keys.F6;
 
     private static string configFilePath = "config.json";
 
     public static void Main()
     {
-        // Load the config from the file
         LoadConfig();
 
-        // Display the startup message
         DisplayMessage("Maxs Auto Clicker V3.0", MessageType.On);
         DisplayMessage("Use the hotkey to toggle autoclicker. For a list of commands, type 'help'.", MessageType.Keywords);
         Thread keyPressThread = new Thread(KeyPressMonitor);
@@ -45,7 +40,7 @@ class AutoClicker
             if ((GetAsyncKeyState(hotkey) & 0x8000) != 0)
             {
                 ToggleAutoClicker();
-                Thread.Sleep(100); // Add a small delay to avoid rapid toggles
+                Thread.Sleep(debounceTime);
             }
 
             Thread.Sleep(1);
@@ -182,7 +177,6 @@ class AutoClicker
             updateRate = newRate;
             DisplayMessage($"Update rate set to {updateRate} ms", MessageType.On);
 
-            // Save the new update rate to the config file
             SaveConfig();
         }
         else
@@ -206,7 +200,6 @@ class AutoClicker
             debounceTime = newDebounceTime;
             DisplayMessage($"Debounce time set to {debounceTime} ms", MessageType.On);
 
-            // Save the new debounce time to the config file
             SaveConfig();
         }
         else
@@ -223,7 +216,6 @@ class AutoClicker
             hotkey = newHotkey;
             DisplayMessage($"Hotkey set to {hotkey}", MessageType.On);
 
-            // Save the new hotkey to the config file
             SaveConfig();
         }
         else
@@ -240,9 +232,9 @@ class AutoClicker
             {
                 string configJson = File.ReadAllText(configFilePath);
                 var config = JsonConvert.DeserializeObject<Config>(configJson);
-                updateRate = config?.UpdateRate ?? 1; // Default to 1 if no rate is found
-                debounceTime = config?.DebounceTime ?? 50; // Default to 50 ms if no debounce time is found
-                hotkey = config?.Hotkey ?? Keys.F6; // Default to F6 if no hotkey is found
+                updateRate = config?.UpdateRate ?? 1;
+                debounceTime = config?.DebounceTime ?? 50;
+                hotkey = config?.Hotkey ?? Keys.F6;
             }
             catch (Exception ex)
             {
@@ -265,8 +257,8 @@ class AutoClicker
     private class Config
     {
         public int UpdateRate { get; set; }
-        public int DebounceTime { get; set; } // New debounce time property
-        public Keys Hotkey { get; set; } // New hotkey property
+        public int DebounceTime { get; set; }
+        public Keys Hotkey { get; set; }
     }
 
     private enum MessageType
