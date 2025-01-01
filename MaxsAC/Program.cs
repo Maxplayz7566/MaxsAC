@@ -3,7 +3,10 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using System.Net.Http;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 class AutoClicker
 {
@@ -21,16 +24,59 @@ class AutoClicker
 
     private static string configFilePath = "config.json";
 
-    public static void Main()
+    private static string version = "3.2";
+
+    public static async Task Main()
     {
         LoadConfig();
 
         DisplayMessage("Maxs Auto Clicker V3.0", MessageType.On);
+        await CheckLatestVersionAsync();
+
         DisplayMessage("Use the hotkey to toggle autoclicker. For a list of commands, type 'help'.", MessageType.Keywords);
         Thread keyPressThread = new Thread(KeyPressMonitor);
         keyPressThread.Start();
 
         CommandListener();
+    }
+
+    public static async Task CheckLatestVersionAsync()
+    {
+        string url = "https://api.github.com/repos/maxplayz7566/maxsac/tags";
+
+        using (HttpClient client = new HttpClient())
+        {
+            client.DefaultRequestHeaders.Add("User-Agent", "MaxsAC/" + version);
+
+            try
+            {
+                HttpResponseMessage response = await client.GetAsync(url);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    string responseData = await response.Content.ReadAsStringAsync();
+                    var jsonArray = JsonConvert.DeserializeObject<JArray>(responseData);
+                    string latest = jsonArray[0]["name"].ToString();
+
+                    if (latest != version)
+                    {
+                        DisplayMessage($"Update available {version} -> {latest}", MessageType.On);
+                        DisplayMessage($"Get latest version at: https://github.com/Maxplayz7566/MaxsAC/releases/tag/{latest}", MessageType.On);
+                    } else
+                    {
+                        DisplayMessage($"No updates available", MessageType.On);
+                    }
+                }
+                else
+                {
+                    DisplayMessage("Unexpected error occurred while sending http reques", MessageType.Off);
+                }
+            }
+            catch (Exception ex)
+            {
+                DisplayMessage("Exception occurred while sending http request", MessageType.Off);
+            }
+        }
     }
 
     private static void KeyPressMonitor()
