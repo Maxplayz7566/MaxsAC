@@ -24,13 +24,13 @@ class AutoClicker
 
     private static string configFilePath = "config.json";
 
-    private static string version = "3.2";
+    private static string version = "3.3";
 
     public static async Task Main()
     {
         LoadConfig();
 
-        DisplayMessage("Maxs Auto Clicker V3.0", MessageType.On);
+        DisplayMessage($"Maxs Auto Clicker V{version}", MessageType.On);
         await CheckLatestVersionAsync();
 
         DisplayMessage("Use the hotkey to toggle autoclicker. For a list of commands, type 'help'.", MessageType.Keywords);
