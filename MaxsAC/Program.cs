@@ -1,112 +1,160 @@
 ﻿using System;
+using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
-using System.Net.Http;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
-class AutoClicker
+class AutoClicker : Form
 {
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(Keys vKey);
 
     private static bool isAutoClicking = false;
     private static Thread clickThread;
-
     private static int updateRate = 1;
-
-    private static int debounceTime = 100;
-
     private static Keys hotkey = Keys.F6;
-
     private static string configFilePath = "config.json";
+    private static string version = "3.4";
 
-    private static string version = "3.3";
+    private NumericUpDown updateRateInput;
+    private ComboBox hotkeySelector;
+    private Button toggleButton;
+    private Button saveButton;
+    private Button resetButton;
+    private Label statusLabel;
 
-    public static async Task Main()
+    private KeyboardHook keyboardHook;
+
+    public AutoClicker()
     {
+        Text = $"Max's Auto Clicker v{version}";
+        Width = 400;
+        Height = 250;
+
+        Label updateRateLabel = new Label { Text = "Click Rate (ms):", Top = 20, Left = 20, Width = 100 };
+        updateRateInput = new NumericUpDown { Top = 20, Left = 140, Width = 100, Minimum = 1, Maximum = 1000 };
+
+        Label hotkeyLabel = new Label { Text = "Hotkey:", Top = 60, Left = 20, Width = 100 };
+        hotkeySelector = new ComboBox { Top = 60, Left = 140, Width = 100 };
+        foreach (Keys key in Enum.GetValues(typeof(Keys)))
+        {
+            hotkeySelector.Items.Add(key);
+        }
+
+        toggleButton = new Button { Text = "Start AutoClicker", Top = 100, Left = 20, Width = 150 };
+        toggleButton.Click += ToggleAutoClicker;
+
+        saveButton = new Button { Text = "Save Config", Top = 100, Left = 200, Width = 150 };
+        saveButton.Click += SaveConfig;
+
+        resetButton = new Button { Text = "Reset Config", Top = 140, Left = 20, Width = 150 };
+        resetButton.Click += ResetConfig;
+
+        statusLabel = new Label { Text = "Status: Ready", Top = 180, Left = 20, Width = 350, ForeColor = System.Drawing.Color.Green };
+
+        Controls.Add(updateRateLabel);
+        Controls.Add(updateRateInput);
+        Controls.Add(hotkeyLabel);
+        Controls.Add(hotkeySelector);
+        Controls.Add(toggleButton);
+        Controls.Add(saveButton);
+        Controls.Add(resetButton);
+        Controls.Add(statusLabel);
+
         LoadConfig();
 
-        DisplayMessage($"Maxs Auto Clicker V{version}", MessageType.On);
-        await CheckLatestVersionAsync();
-
-        DisplayMessage("Use the hotkey to toggle autoclicker. For a list of commands, type 'help'.", MessageType.Keywords);
-        Thread keyPressThread = new Thread(KeyPressMonitor);
-        keyPressThread.Start();
-
-        CommandListener();
+        // Initialize global keyboard hook
+        keyboardHook = new KeyboardHook();
+        keyboardHook.KeyPressed += OnKeyPressed;
+        RegisterHotkey();
     }
 
-    public static async Task CheckLatestVersionAsync()
+    private void RegisterHotkey()
     {
-        string url = "https://api.github.com/repos/maxplayz7566/maxsac/tags";
-
-        using (HttpClient client = new HttpClient())
+        if (keyboardHook != null)
         {
-            client.DefaultRequestHeaders.Add("User-Agent", "MaxsAC/" + version);
+            keyboardHook.KeyPressed -= OnKeyPressed; // Remove any previous handlers
+            keyboardHook.KeyPressed += OnKeyPressed;
+        }
+    }
 
+    private void LoadConfig()
+    {
+        if (File.Exists(configFilePath))
+        {
             try
             {
-                HttpResponseMessage response = await client.GetAsync(url);
+                string configJson = File.ReadAllText(configFilePath);
+                var config = JsonConvert.DeserializeObject<Config>(configJson);
+                updateRate = config?.UpdateRate ?? 1;
+                hotkey = config?.Hotkey ?? Keys.F6;
 
-                if (response.IsSuccessStatusCode)
-                {
-                    string responseData = await response.Content.ReadAsStringAsync();
-                    var jsonArray = JsonConvert.DeserializeObject<JArray>(responseData);
-                    string latest = jsonArray[0]["name"].ToString();
+                updateRateInput.Value = updateRate;
+                hotkeySelector.SelectedItem = hotkey;
 
-                    if (latest != version)
-                    {
-                        DisplayMessage($"Update available {version} -> {latest}", MessageType.On);
-                        DisplayMessage($"Get latest version at: https://github.com/Maxplayz7566/MaxsAC/releases/tag/{latest}", MessageType.On);
-                    } else
-                    {
-                        DisplayMessage($"No updates available", MessageType.On);
-                    }
-                }
-                else
-                {
-                    DisplayMessage("Unexpected error occurred while sending http reques", MessageType.Off);
-                }
+                UpdateStatus("Config loaded successfully.", true);
             }
-            catch (Exception ex)
+            catch
             {
-                DisplayMessage("Exception occurred while sending http request", MessageType.Off);
+                UpdateStatus("Error loading config. Using defaults.", false);
+                ResetConfig(null, null);
             }
         }
-    }
-
-    private static void KeyPressMonitor()
-    {
-        while (true)
+        else
         {
-            if ((GetAsyncKeyState(hotkey) & 0x8000) != 0)
-            {
-                ToggleAutoClicker();
-                Thread.Sleep(debounceTime);
-            }
-
-            Thread.Sleep(1);
+            ResetConfig(null, null);
         }
     }
 
-    private static void ToggleAutoClicker()
+    private void SaveConfig(object sender, EventArgs e)
+    {
+        updateRate = (int)updateRateInput.Value;
+        hotkey = (Keys)hotkeySelector.SelectedItem;
+
+        var config = new Config { UpdateRate = updateRate, Hotkey = hotkey };
+        string configJson = JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented);
+        File.WriteAllText(configFilePath, configJson);
+
+        RegisterHotkey(); // Update hotkey registration
+
+        UpdateStatus("Configuration saved successfully.", true);
+    }
+
+    private void ResetConfig(object sender, EventArgs e)
+    {
+        updateRate = 1;
+        hotkey = Keys.F6;
+
+        updateRateInput.Value = updateRate;
+        hotkeySelector.SelectedItem = hotkey;
+
+        SaveConfig(null, null);
+        UpdateStatus("Configuration reset to defaults.", true);
+    }
+
+    private void ToggleAutoClicker(object sender, EventArgs e)
+    {
+        ToggleAutoClicker();
+    }
+
+    private void ToggleAutoClicker()
     {
         if (isAutoClicking)
         {
             isAutoClicking = false;
-            DisplayMessage("Autoclicker OFF", MessageType.Off);
+            toggleButton.Text = "Start AutoClicker";
             clickThread?.Abort();
+            UpdateStatus("AutoClicker stopped.", false);
         }
         else
         {
             isAutoClicking = true;
-            DisplayMessage("Autoclicker ON", MessageType.On);
+            toggleButton.Text = "Stop AutoClicker";
             clickThread = new Thread(ClickLoop);
             clickThread.Start();
+            UpdateStatus("AutoClicker started.", true);
         }
     }
 
@@ -119,6 +167,20 @@ class AutoClicker
         }
     }
 
+    private void UpdateStatus(string message, bool isSuccess)
+    {
+        statusLabel.Text = $"Status: {message}";
+        statusLabel.ForeColor = isSuccess ? System.Drawing.Color.Green : System.Drawing.Color.Red;
+    }
+
+    private void OnKeyPressed(object sender, KeyPressedEventArgs e)
+    {
+        if (e.Key == hotkey)
+        {
+            ToggleAutoClicker();
+        }
+    }
+
     [DllImport("user32.dll")]
     private static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
 
@@ -127,191 +189,22 @@ class AutoClicker
         mouse_event((int)value, 0, 0, 0, 0);
     }
 
+    private class Config
+    {
+        public int UpdateRate { get; set; }
+        public Keys Hotkey { get; set; }
+    }
+
     [Flags]
     private enum MouseEventFlags
     {
         LeftDown = 0x02,
         LeftUp = 0x04,
-        RightDown = 0x08,
-        RightUp = 0x10,
-        MiddleDown = 0x20,
-        MiddleUp = 0x40
     }
 
-    private static void DisplayMessage(string message, MessageType type)
+    [STAThread]
+    public static void Main()
     {
-        switch (type)
-        {
-            case MessageType.Off:
-                Console.ForegroundColor = ConsoleColor.Red;
-                break;
-            case MessageType.On:
-                Console.ForegroundColor = ConsoleColor.Green;
-                break;
-            case MessageType.Keywords:
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                break;
-            case MessageType.Regular:
-            default:
-                Console.ResetColor();
-                break;
-        }
-
-        Console.WriteLine(message);
-        Console.ResetColor();
-    }
-
-    private static void CommandListener()
-    {
-        while (true)
-        {
-            string input = Console.ReadLine()?.ToLower();
-            if (string.IsNullOrWhiteSpace(input))
-                continue;
-
-            switch (input)
-            {
-                case "help":
-                    DisplayMessage("Commands:", MessageType.Keywords);
-                    DisplayMessage("help - Show this message", MessageType.Keywords);
-                    DisplayMessage("status - Show the current status of the autoclicker", MessageType.Keywords);
-                    DisplayMessage("reset - Resets the configs to the default", MessageType.Keywords);
-                    DisplayMessage("setrate [rate] - Set the click rate in milliseconds", MessageType.Keywords);
-                    DisplayMessage("setdebounce [time] - Set the debounce time in milliseconds", MessageType.Keywords);
-                    DisplayMessage("sethotkey [key] - Set the hotkey for toggling the autoclicker", MessageType.Keywords);
-                    break;
-
-                case "status":
-                    if (isAutoClicking)
-                    {
-                        DisplayMessage("Autoclicker ON", MessageType.On);
-                    }
-                    else
-                    {
-                        DisplayMessage("Autoclicker OFF", MessageType.Off);
-                    }
-                    break;
-
-                case string command when command.StartsWith("setrate"):
-                    SetUpdateRate(command);
-                    break;
-
-                case string command when command.StartsWith("setdebounce"):
-                    SetDebounceTime(command);
-                    break;
-
-                case string command when command.StartsWith("sethotkey"):
-                    SetHotkey(command);
-                    break;
-
-                case string command when command.StartsWith("reset"):
-                    SetDefaultConfig();
-                    break;
-
-                default:
-                    DisplayMessage("Unknown command. Type 'help' for a list of commands.", MessageType.Off);
-                    break;
-            }
-        }
-    }
-
-    private static void SetUpdateRate(string command)
-    {
-        var parts = command.Split(' ');
-        if (parts.Length == 2 && int.TryParse(parts[1], out int newRate) && newRate > 0)
-        {
-            updateRate = newRate;
-            DisplayMessage($"Update rate set to {updateRate} ms", MessageType.On);
-
-            SaveConfig();
-        }
-        else
-        {
-            DisplayMessage("Invalid rate. Please enter a positive integer.", MessageType.Off);
-        }
-    }
-
-    private static void SetDefaultConfig()
-    {
-        var config = new Config { UpdateRate = 1, DebounceTime = 100, Hotkey = Keys.F6 };
-        string configJson = JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented);
-        File.WriteAllText(configFilePath, configJson);
-    }
-
-    private static void SetDebounceTime(string command)
-    {
-        var parts = command.Split(' ');
-        if (parts.Length == 2 && int.TryParse(parts[1], out int newDebounceTime) && newDebounceTime >= 0)
-        {
-            debounceTime = newDebounceTime;
-            DisplayMessage($"Debounce time set to {debounceTime} ms", MessageType.On);
-
-            SaveConfig();
-        }
-        else
-        {
-            DisplayMessage("Invalid debounce time. Please enter a non-negative integer.", MessageType.Off);
-        }
-    }
-
-    private static void SetHotkey(string command)
-    {
-        var parts = command.Split(' ');
-        if (parts.Length == 2 && Enum.TryParse(parts[1], true, out Keys newHotkey))
-        {
-            hotkey = newHotkey;
-            DisplayMessage($"Hotkey set to {hotkey}", MessageType.On);
-
-            SaveConfig();
-        }
-        else
-        {
-            DisplayMessage("Invalid hotkey. Please enter a valid key (e.g., F1, F2, etc.).", MessageType.Off);
-        }
-    }
-
-    private static void LoadConfig()
-    {
-        if (File.Exists(configFilePath))
-        {
-            try
-            {
-                string configJson = File.ReadAllText(configFilePath);
-                var config = JsonConvert.DeserializeObject<Config>(configJson);
-                updateRate = config?.UpdateRate ?? 1;
-                debounceTime = config?.DebounceTime ?? 50;
-                hotkey = config?.Hotkey ?? Keys.F6;
-            }
-            catch (Exception ex)
-            {
-                DisplayMessage($"Error loading config: {ex.Message}", MessageType.Off);
-            }
-        }
-        else
-        {
-            SetDefaultConfig();
-        }
-    }
-
-    private static void SaveConfig()
-    {
-        var config = new Config { UpdateRate = updateRate, DebounceTime = debounceTime, Hotkey = hotkey };
-        string configJson = JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented);
-        File.WriteAllText(configFilePath, configJson);
-    }
-
-    private class Config
-    {
-        public int UpdateRate { get; set; }
-        public int DebounceTime { get; set; }
-        public Keys Hotkey { get; set; }
-    }
-
-    private enum MessageType
-    {
-        Off,
-        On,
-        Keywords,
-        Regular
+        Application.Run(new AutoClicker());
     }
 }
